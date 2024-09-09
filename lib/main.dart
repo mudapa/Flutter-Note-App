@@ -1,16 +1,14 @@
 import 'package:flutter/material.dart';
-import 'package:hive_flutter/hive_flutter.dart';
-
+import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:hive/hive.dart';
+import 'bloc/note_bloc.dart';
 import 'models/note.dart';
 import 'pages/note_page.dart';
+import 'utils/hive_services.dart';
 
 void main() async {
-  await Hive.initFlutter();
-  if (Hive.isBoxOpen('notesBox')) {
-    await Hive.box('notesBox').close();
-  }
-  Hive.registerAdapter(NoteAdapter());
-  await Hive.openBox<Note>('notesBox');
+  WidgetsFlutterBinding.ensureInitialized();
+  await HiveService().init();
   runApp(const MyApp());
 }
 
@@ -19,13 +17,21 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'Flutter Note',
-      theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
-        useMaterial3: true,
+    return MultiBlocProvider(
+      providers: [
+        BlocProvider(
+          create: (_) =>
+              NoteBloc(notesBox: Hive.box<Note>('notesBox'))..add(LoadNotes()),
+        ),
+      ],
+      child: MaterialApp(
+        title: 'Flutter Note',
+        theme: ThemeData(
+          colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
+          useMaterial3: true,
+        ),
+        home: const NotePage(),
       ),
-      home: const NotePage(),
     );
   }
 }

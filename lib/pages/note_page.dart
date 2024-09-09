@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:hive/hive.dart';
-import 'package:hive_flutter/hive_flutter.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 
+import '../bloc/note_bloc.dart';
 import '../models/note.dart';
 
 class NotePage extends StatefulWidget {
@@ -14,39 +14,6 @@ class NotePage extends StatefulWidget {
 class _NotePageState extends State<NotePage> {
   final _titleController = TextEditingController();
   final _contentController = TextEditingController();
-  final _notesBox = Hive.box<Note>('notesBox');
-
-  void _createOrUpdateNote([Note? note]) {
-    String title = _titleController.text;
-    String content = _contentController.text;
-
-    if (title.isNotEmpty && content.isNotEmpty) {
-      if (note != null) {
-        note.title = title;
-        note.content = content;
-        note.save();
-      } else {
-        final newNote = Note(
-          title: title,
-          content: content,
-        );
-        _notesBox.add(newNote);
-      }
-
-      _clearTextFields();
-      setState(() {});
-    }
-  }
-
-  void _clearTextFields() {
-    _titleController.clear();
-    _contentController.clear();
-  }
-
-  void _deleteNote(Note note) {
-    note.delete();
-    setState(() {});
-  }
 
   void _showNoteDialog([Note? note]) {
     if (note != null) {
@@ -79,14 +46,31 @@ class _NotePageState extends State<NotePage> {
           actions: [
             ElevatedButton(
               onPressed: () {
-                _createOrUpdateNote(note);
+                if (note != null) {
+                  context.read<NoteBloc>().add(UpdateNote(
+                        note: note,
+                        title: _titleController.text,
+                        content: _contentController.text,
+                      ));
+                  _titleController.clear();
+                  _contentController.clear();
+                  setState(() {});
+                } else {
+                  context.read<NoteBloc>().add(AddNote(
+                        title: _titleController.text,
+                        content: _contentController.text,
+                      ));
+                  _titleController.clear();
+                  _contentController.clear();
+                }
                 Navigator.pop(context);
               },
               child: Text(note == null ? 'Create' : 'Update'),
             ),
             TextButton(
               onPressed: () {
-                _clearTextFields();
+                _titleController.clear();
+                _contentController.clear();
                 Navigator.pop(context);
               },
               child: const Text('Cancel'),
@@ -101,7 +85,6 @@ class _NotePageState extends State<NotePage> {
   void dispose() {
     _titleController.dispose();
     _contentController.dispose();
-    _notesBox.close();
     super.dispose();
   }
 
@@ -119,42 +102,53 @@ class _NotePageState extends State<NotePage> {
           )
         ],
       ),
-      body: ValueListenableBuilder(
-        valueListenable: _notesBox.listenable(),
-        builder: (context, Box<Note> box, _) {
-          if (box.isEmpty) {
+      body: BlocBuilder<NoteBloc, NoteState>(
+        builder: (context, state) {
+          if (state is NotesLoading) {
             return const Center(
-              child: Text('No notes found.'),
+              child: CircularProgressIndicator(),
             );
           }
-          return ListView.builder(
-            itemCount: box.length,
-            itemBuilder: (context, index) {
-              Note note = box.getAt(index)!;
 
-              return ListTile(
-                title: Text(note.title),
-                subtitle: Text(note.content),
-                trailing: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    IconButton(
-                      icon: const Icon(Icons.edit),
-                      onPressed: () {
-                        _showNoteDialog(note);
-                      },
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.delete),
-                      onPressed: () {
-                        _deleteNote(note);
-                      },
-                    ),
-                  ],
-                ),
-              );
-            },
-          );
+          if (state is NoteOperationFailure) {
+            return Center(
+              child: Text(state.error),
+            );
+          }
+
+          if (state is NotesLoaded) {
+            if (state.notes.isEmpty) {
+              return const Center(child: Text('No notes found.'));
+            }
+            return ListView.builder(
+              itemCount: state.notes.length,
+              itemBuilder: (context, index) {
+                final note = state.notes[index];
+                return ListTile(
+                  title: Text(note.title),
+                  subtitle: Text(note.content),
+                  trailing: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      IconButton(
+                        icon: const Icon(Icons.edit),
+                        onPressed: () {
+                          _showNoteDialog(note);
+                        },
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.delete),
+                        onPressed: () {
+                          context.read<NoteBloc>().add(DeleteNote(note));
+                        },
+                      ),
+                    ],
+                  ),
+                );
+              },
+            );
+          }
+          return const Center(child: Text('Something went wrong.'));
         },
       ),
     );
